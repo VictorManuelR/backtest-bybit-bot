@@ -1,0 +1,102 @@
+Metadata-Version: 2.4
+Name: tradingtool
+Version: 0.0.1
+Summary: Backtesting and trading utilities.
+Author-email: "Victor Manuel R." <vmramirez3105@gmail.com>
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+
+# Trading-Tool
+
+Backtesting utilities for cryptocurrency strategies using **Bybit public market data** (testnet API). The project fetches OHLCV candles, runs a pluggable example strategy, simulates orders on 1-minute bars with fees, and can append results to CSV or plot trades with `mplfinance`.
+
+The included `strategy()` is **illustrative only**: it is not suitable for production or live trading and exists to show how the backtest pipeline fits together. Use your own strategy logic after research and validation.
+
+## Requirements
+
+- **Python** 3.12 (matches the Dev Container image in `.devcontainer/devcontainer.json`: `mcr.microsoft.com/devcontainers/python:1-3.12-bookworm`)
+- **Internet access** (market data is requested from Bybit)
+- No API keys are required for the **kline** endpoints used here
+
+## Installation
+
+1. Clone or copy this repository and open a terminal in the project root.
+
+2. Create and activate a virtual environment (recommended):
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate   # Linux/macOS
+   # .venv\Scripts\activate    # Windows
+   ```
+
+3. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Install the `trading` package in editable mode so imports like `from trading...` resolve:
+
+   ```bash
+   pip install -e .
+   ```
+
+   Alternatively, you can skip the editable install and set `PYTHONPATH` to the `src` directory when running scripts (see below).
+
+## Dependencies
+
+Pinned versions are listed in `requirements.txt`:
+
+- `pandas` — data handling
+- `requests` — HTTP calls to Bybit
+- `mplfinance` — optional candlestick / trade visualization (`trading.utils.plots`)
+- `build` — packaging helper
+
+## What this project does
+
+| Area | Description |
+|------|-------------|
+| **Data** | `trading.exchange.bybit` loads OHLCV from **Bybit testnet** (`api-testnet.bybit.com`, v5 market klines). |
+| **Backtest window** | `trading.backtest.ohlcv_data` loads higher-timeframe history *before* an anchor datetime and 1m bars *after* it for simulation. |
+| **Strategy** | `trading.backtest.strategy` includes an example `strategy()` (random long/short with fixed % stops/targets)—**demo only, not for production**—plus `simulate_order()` for PnL after fees. |
+| **Output** | `trading.utils.files.save_to_csv` appends rows to a CSV under a chosen directory. |
+
+To use **mainnet** or another base URL, change the URL in `src/trading/exchange/bybit.py` (`get_klines`).
+
+## Running the sample backtest script
+
+The example driver is `backtest_bybit_bot/scripts/backtesting_script.py`. It loops over a date range and symbols, calls `process_symbol` for each day, updates a running capital figure, and appends results under `backtesting/`.
+
+1. Edit the script if needed: `start`, `end`, `fmt`, `ticks`, `dir_path`, `filename`, capital settings, and `process_symbol(..., timeframe, days_before, hours_after)` arguments.
+
+2. Run from the **repository root**:
+
+   ```bash
+   pip install -e .    # if not already done
+   python backtest_bybit_bot/scripts/backtesting_script.py
+   ```
+
+   If you did not install the package:
+
+   ```bash
+   PYTHONPATH=src python backtest_bybit_bot/scripts/backtesting_script.py
+   ```
+
+Results are written to the CSV path configured in the script (default: `backtesting/results_<version>.csv`).
+
+## Project layout
+
+- `src/trading/` — installable package (`exchange`, `backtest`, `utils`)
+- `backtest_bybit_bot/scripts/` — executable examples (not part of the `trading` package path by default)
+- `pyproject.toml` — package metadata and setuptools layout (`package-dir` = `src`)
+
+## Customizing behavior
+
+- **Strategy logic**: replace or extend `strategy()` in `src/trading/backtest/strategy.py`. Do not deploy the sample strategy as-is; it is meant as a learning example.
+- **Symbol category**: `process_symbol` uses category `"linear"`; adjust in `process_symbol` / `get_backtest_data` if you need spot or other categories.
+- **Fees**: opening/closing fee constants live at the top of `strategy.py` (`opening_fee`, `closing_fee`).
+
+## License and author
+
+See `pyproject.toml` for project metadata and author contact.

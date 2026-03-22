@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradingtool"
+version = "0.0.1"
+description = "Backtesting and trading utilities."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "Victor Manuel R.", email = "vmramirez3105@gmail.com" },
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["trading*"]
