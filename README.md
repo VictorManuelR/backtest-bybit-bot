@@ -79,10 +79,32 @@ The example driver is `backtest_bybit_bot/scripts/backtesting_script.py`. It loo
 
 Results are written to the CSV path configured in the script (default: `backtesting/results_<version>.csv`).
 
+## Jupyter notebook
+
+The notebook [`backtest_bybit_bot/notebooks/backtesting_nb.ipynb`](backtest_bybit_bot/notebooks/backtesting_nb.ipynb) runs the same backtest idea as the script for a **single anchor date**: it calls `process_symbol(..., ret_data=True)` for each symbol, builds a trades `DataFrame`, updates capital, and shows the results table. It then calls `plot_trades_scatter(df, df_dict)` so you get **mplfinance** candlestick charts with entry/exit markers and stop/take levels for each symbol.
+
+Open the notebook in **VS Code** (Jupyter extension) or in a **Jupyter** environment after installing dependencies and `pip install -e .`. The Dev Container exposes port **8888** if you prefer a classic Jupyter server in the browser.
+
+Example chart output (BTCUSDT, demo strategy—**not** production advice):
+
+![Example backtest chart: BTCUSDT BUY trade with entry, stop, and take levels](example.png)
+
+Chart elements (from `plot_trades_scatter` in `src/trading/utils/plots.py`):
+
+- **Candlesticks** — 1-minute OHLC prices in the post-anchor window used for the simulation.
+- **Title** — Symbol, trade **side** (`BUY` / `SELL`), and **result** (`WON` / `LOST`) from the backtest row.
+- **Green dashed line** — **Take-profit** level.
+- **Red dashed line** — **Stop-loss** level.
+- **Black dashed line** — **Entry** price.
+- **Blue dot** — **Entry** fill (first bar where price trades through the entry).
+- **Green or red dot** — **Exit** fill: for a **BUY**, green if the exit is above entry, red if below; for a **SELL**, the logic is inverted (favorable vs unfavorable exit).
+
 ## Project layout
 
 - `src/trading/` — installable package (`exchange`, `backtest`, `utils`)
 - `backtest_bybit_bot/scripts/` — executable examples (not part of the `trading` package path by default)
+- `backtest_bybit_bot/notebooks/` — Jupyter notebooks (`backtesting_nb.ipynb`)
+- `example.png` — sample visualization complementing the notebook (chart from `plot_trades_scatter`)
 - `pyproject.toml` — package metadata and setuptools layout (`package-dir` = `src`)
 
 ## Customizing behavior
