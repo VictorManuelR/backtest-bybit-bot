@@ -1,17 +1,17 @@
 from datetime import datetime, timezone, timedelta
-from typing import List
+from typing import Literal, TypeAlias, overload
 
-def datetime_from_string(date: str | datetime, fmt: str) -> datetime:
+DateLike: TypeAlias = str | datetime
+TimestampUnit: TypeAlias = Literal["s", "ms"]
+
+def datetime_from_string(date: DateLike, fmt: str) -> datetime:
     """Parse ``date`` with ``fmt`` and attach UTC; pass through if already a ``datetime``."""
-    try:
-        formated_date = datetime.strptime(date, fmt)
-        formated_date = formated_date.replace(tzinfo=timezone.utc)
-        return formated_date
-    except Exception:
-        if isinstance(date, datetime):
-            return date
-        else:
-            raise
+    if isinstance(date, datetime):
+        return date
+
+    formated_date = datetime.strptime(date, fmt)
+    formated_date = formated_date.replace(tzinfo=timezone.utc)
+    return formated_date
 
 def string_from_datetime(date: datetime, fmt: str) -> str:
     """Format ``date`` with ``fmt`` and return the string."""
@@ -21,7 +21,14 @@ def string_from_datetime(date: datetime, fmt: str) -> str:
     except Exception:
         raise
 
-def timestamp_from_datetime(date: datetime, units: str = "s") -> float | int:
+@overload
+def timestamp_from_datetime(date: datetime, units: Literal["s"] = "s") -> float: ...
+
+@overload
+def timestamp_from_datetime(date: datetime, units: Literal["ms"]) -> int: ...
+
+
+def timestamp_from_datetime(date: datetime, units: TimestampUnit = "s") -> float | int:
     """Convert ``date`` to Unix timestamp in seconds or milliseconds.
 
     Args:
@@ -44,7 +51,7 @@ def timestamp_from_datetime(date: datetime, units: str = "s") -> float | int:
     except Exception:
         raise
 
-def dates_generator(start: str, end: str, fmt: str) -> List[datetime]:
+def dates_generator(start: str, end: str, fmt: str) -> list[datetime]:
     """Yield each calendar day from ``start`` through ``end`` inclusive as UTC datetimes.
 
     Args:
