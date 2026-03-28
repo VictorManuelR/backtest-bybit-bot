@@ -1,11 +1,13 @@
-import pandas as pd
 from dataclasses import dataclass, asdict
-from trading.backtest.ohlcv_data import get_backtest_data
 import random
 import time
+from typing import Any, cast
 
-opening_fee = 0.00055  # 0.055%
-closing_fee = 0.0002   # 0.02%
+import pandas as pd
+from trading.backtest.ohlcv_data import get_backtest_data
+
+OPENING_FEE = 0.00055  # 0.055%
+CLOSING_FEE = 0.0002   # 0.02%
 
 @dataclass
 class Operation:
@@ -18,14 +20,14 @@ class Operation:
     stoploss: float | None
     takeprofit: float | None
 
-    def validate(self):
+    def validate(self) -> None:
         """Check side, quantity, and stop/take consistency; warn if exits are missing."""
         if self.side not in ("BUY", "SELL"):
             raise ValueError("ERROR: side must be 'BUY' or 'SELL'")
         if self.qty <= 0:
             raise ValueError("ERROR: 'qty' must be greater than 0.0")
         if self.entry_price is None:
-            raise ValueError("ERROR: 'qty' must be greater than 0.0")
+            raise ValueError("ERROR: 'entry_price' can not be None")
         if self.stoploss is not None and self.takeprofit is not None: 
             if self.side == "BUY":
                 if self.stoploss > self.takeprofit:
@@ -34,18 +36,18 @@ class Operation:
                 if self.stoploss < self.takeprofit:
                     raise ValueError("ERROR: 'stoploss' must be greater than 'takeprofit' in a 'SELL' operation.")
         else:
-            print("WARNING: No exit points asigned. (tf|sl)")
+            print("WARNING: No exit points assigned. (tp|sl)")
 
-    def show(self):
+    def show(self) -> None:
         """Print a human-readable summary of this operation to stdout."""
         print(f"|--> Symbol    : {self.symbol}")
         print(f"|--> Side      : {self.side}")
         print(f"|--> Qty       : {self.qty:.3f}")
         print(f"|--> Price     : {self.entry_price:.3f}")
-        print(f"|--> Stoploss  : {self.stoploss:.3f}")
-        print(f"|--> Takeprofit: {self.takeprofit:.3f}")
+        print(f"|--> Stoploss  : {self.stoploss if self.stoploss is not None else 'None'}")
+        print(f"|--> Takeprofit: {self.takeprofit if self.takeprofit is not None else 'None'}")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """Return this operation as a plain dict (same keys as the dataclass fields)."""
         return asdict(self)
 
@@ -62,33 +64,30 @@ def strategy(symbol: str, df: pd.DataFrame) -> Operation:
         A validated :class:`Operation` instance.
     """
 
-    # Define Order Type
-    # In this example I'll do it randomly.
+    if df.empty:
+        raise ValueError("Input dataframe is empty")
+
+    # Define Order Type.
+    # In this example it is random.
     side_types = ["BUY", "SELL"]
     side = random.choice(side_types)
+    last_close = cast(float, df["close"].iat[-1])
     
-    # Asign Join Point
-    # In this example I'll do it depending on the side
+    # Assign join point depending on side.
     if side == "BUY":
-        # if BUY, then the join point will be below the current price by 1.0%
-        entry_price = df['close'].iat[-1] * 0.99
+        entry_price = last_close * 0.99
     else:
-        # if SELL, then the join point will be above the current price by 1.0%
-        entry_price = df['close'].iat[-1] * 1.01
+        entry_price = last_close * 1.01
         
-    # Asign exit points: stoploss and takeprofit
-    # In this example I'll do it by asigning each one 1.0% away from the entry price
+    # Assign exit points 1.0% away from entry.
     if side == "BUY":
-        # if BUY, then the stoploss should be below de entry price
-        stoploss   = entry_price * 0.99
+        stoploss = entry_price * 0.99
         takeprofit = entry_price * 1.01
     else:
-        # if SELL, then the stoploss should be above de entry price
-        stoploss   = entry_price * 1.01
+        stoploss = entry_price * 1.01
         takeprofit = entry_price * 0.99
     
-    # Asing QTY for the operation
-    # In this example I'll use the entry price to invest 1,000 USDT
+    # Size position to invest 1,000 USDT notionally.
     qty = 1_000 / entry_price
     
     # Validate the operation params
@@ -117,93 +116,100 @@ def simulate_order(df: pd.DataFrame, operation: Operation) -> dict:
         ``duration`` (minutes), and ``closed_by`` (reason or ``no_entry_triggered``).
     """
     
-    details = operation.to_dict()
+    if df.empty:
+        raise ValueError("Input dataframe is empty")
     
     trade_open = False
-    entry_time = None
-    exit_time = None
-    exit_price = None
-    closed_by = None
+    entry_time: Any = None
+    exit_time: Any = None
+    exit_price: float | None = None
+    closed_by: str | None = None
     
     for row in df.itertuples():     
+        row_high = cast(float, row.high)
+        row_low = cast(float, row.low)
+
         if not trade_open:
-            if row.high >= details["entry_price"] and row.low <= details["entry_price"]:
+            if row_high >= operation.entry_price and row_low <= operation.entry_price:
                 trade_open = True
                 entry_time = row.datetime_utc
         else:
-            if details["side"] == "BUY":
-                if row.low <= details["stoploss"]:
-                    exit_price = details["stoploss"]
+            if operation.side == "BUY":
+                if operation.stoploss is not None and row_low <= operation.stoploss:
+                    exit_price = float(operation.stoploss)
                     exit_time = row.datetime_utc
                     closed_by = "stoploss"
                     break
-                elif row.high >= details["takeprofit"]:
-                    exit_price = details["takeprofit"]
+                elif operation.takeprofit is not None and row_high >= operation.takeprofit:
+                    exit_price = float(operation.takeprofit)
                     exit_time = row.datetime_utc
                     closed_by = "takeprofit"
                     break
                     
-            elif details["side"] == "SELL":
-                if row.high >= details["stoploss"]:
-                    exit_price = details["stoploss"]
+            elif operation.side == "SELL":
+                if operation.stoploss is not None and row_high >= operation.stoploss:
+                    exit_price = float(operation.stoploss)
                     exit_time = row.datetime_utc
                     closed_by = "stoploss"
                     break
-                elif row.low <= details["takeprofit"]:
-                    exit_price = details["takeprofit"]
+                elif operation.takeprofit is not None and row_low <= operation.takeprofit:
+                    exit_price = float(operation.takeprofit)
                     exit_time = row.datetime_utc
                     closed_by = "takeprofit"
                     break
     
     if trade_open and exit_price is None:
         last_row = df.iloc[-1]
-        exit_price = last_row["close"]
+        exit_price = float(last_row["close"])
         exit_time = last_row["datetime_utc"]
         closed_by = "end_of_data"
     
     if trade_open:
         duration_minutes = None
         if entry_time is not None and exit_time is not None:
-            duration = pd.to_datetime(exit_time) - pd.to_datetime(entry_time)
+            duration = pd.Timestamp(exit_time) - pd.Timestamp(entry_time)
             duration_minutes = int(duration.total_seconds() // 60)
         
-        if details["side"] == "BUY":
-            pnl = (exit_price - details["entry_price"]) * details["qty"]
+        if exit_price is None:
+            raise RuntimeError("Trade is open but exit_price is missing")
+
+        if operation.side == "BUY":
+            pnl = (exit_price - operation.entry_price) * operation.qty
         else:
-            pnl = (details["entry_price"] - exit_price) * details["qty"]
+            pnl = (operation.entry_price - exit_price) * operation.qty
         
         results = {
-            'symbol'     : details["symbol"],
-            'side'       : details["side"],
-            'qty'        : details["qty"],
-            'amount'     : details["qty"] * details["entry_price"],
-            'stoploss'   : details["stoploss"],
-            'takeprofit' : details["takeprofit"],
-            'entry_time' : entry_time,
-            'exit_time'  : exit_time,
-            'duration'   : duration_minutes,
-            'entry_price': details["entry_price"],
-            'exit_price' : exit_price,
-            'pnl'        : pnl,
-            'real_pnl'   : pnl - (details["entry_price"] * opening_fee + exit_price * closing_fee) * details["qty"],
-            'closed_by'  : closed_by,
+            "symbol": operation.symbol,
+            "side": operation.side,
+            "qty": operation.qty,
+            "amount": operation.qty * operation.entry_price,
+            "stoploss": operation.stoploss,
+            "takeprofit": operation.takeprofit,
+            "entry_time": entry_time,
+            "exit_time": exit_time,
+            "duration": duration_minutes,
+            "entry_price": operation.entry_price,
+            "exit_price": exit_price,
+            "pnl": pnl,
+            "real_pnl": pnl - (operation.entry_price * OPENING_FEE + exit_price * CLOSING_FEE) * operation.qty,
+            "closed_by": closed_by,
         }
     else:
         results = {
-            'symbol'     : details["symbol"],
-            'side'       : details["side"],
-            'qty'        : details["qty"],
-            'amount'     : details["qty"] * details["entry_price"],
-            'stoploss'   : details["stoploss"],
-            'takeprofit' : details["takeprofit"],
-            'entry_time' : None,
-            'exit_time'  : None,
-            'duration'   : 0,
-            'entry_price': None,
-            'exit_price' : None,
-            'pnl'        : 0,
-            'real_pnl'   : 0,
-            'closed_by'  : "no_entry_triggered"
+            "symbol": operation.symbol,
+            "side": operation.side,
+            "qty": operation.qty,
+            "amount": operation.qty * operation.entry_price,
+            "stoploss": operation.stoploss,
+            "takeprofit": operation.takeprofit,
+            "entry_time": None,
+            "exit_time": None,
+            "duration": 0,
+            "entry_price": None,
+            "exit_price": None,
+            "pnl": 0,
+            "real_pnl": 0,
+            "closed_by": "no_entry_triggered",
         }
     return results
 
@@ -215,7 +221,7 @@ def process_symbol(
     backtest_d: int,
     max_living_time_h: int,
     ret_data: bool = False,
-) -> dict:
+) -> dict[str, Any] | tuple[dict[str, Any], pd.DataFrame]:
     """Load OHLCV around ``date``, run :func:`strategy`, then :func:`simulate_order`.
 
     Intended to run per symbol (e.g. in a worker). Retries ``get_backtest_data`` up to
@@ -237,24 +243,33 @@ def process_symbol(
         Exception: Re-raises errors from strategy/simulation after successful data load.
     """
 
-    count = 0
-    while count < 3:
+    last_error: Exception | None = None
+    df_before: pd.DataFrame | None = None
+    df_after: pd.DataFrame | None = None
+
+    for attempt in range(1, 4):
         try:
-            df_before, df_after = get_backtest_data("linear", symbol, timeframe,
-                                                    date = [date, format],
-                                                    days_before = backtest_d, hours_after = max_living_time_h)
+            df_before, df_after = get_backtest_data(
+                "linear",
+                symbol,
+                timeframe,
+                date=(date, format),
+                days_before=backtest_d,
+                hours_after=max_living_time_h,
+            )
             break
         except Exception as e:
-            count+=1
-            print(f"Error: {e}. ({count})Retrying...")
+            last_error = e
+            print(f"Error: {e}. ({attempt}) Retrying...")
             time.sleep(2)
+    else:
+        raise RuntimeError("Failed to load backtest data after 3 attempts") from last_error
 
-    try:
-        operation = strategy(symbol=symbol, df=df_before)
-        results = simulate_order(df=df_after, operation=operation)
-        if ret_data:
-            return results, df_after
-        else:
-            return results
-    except Exception:
-        raise
+    if df_before is None or df_after is None:
+        raise RuntimeError("Backtest dataframes were not initialized")
+
+    operation = strategy(symbol=symbol, df=df_before)
+    results = simulate_order(df=df_after, operation=operation)
+    if ret_data:
+        return results, df_after
+    return results
